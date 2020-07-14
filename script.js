@@ -7,7 +7,7 @@ const FRICTION = 0.7; //friction coefficiant of space where 0 = no friction, 1 =
 const TURN_SPEED = 360; //turn speed in degrees per second
 const SHIP_THRUST = 5; // ship accel in px per second per second
 const INDENT = 0.65 // the lower this is the thinner the ship
-const ROIDS_NUM = 5; //starting number of asteroids
+const ROIDS_NUM = 0; //starting number of asteroids
 const ROIDS_SIZE = 100; // max starting size in pixels
 const ROIDS_SPD = 50; // max starting speed in pixels per second
 const ROIDS_VERT = 10; // average number of vertices on each asteroid
@@ -16,8 +16,9 @@ const SHIP_EXPLODE_DUR = 0.3; // duration of ship explosition in seconds
 const SHIP_INV_DUR = 3; // duration of invulneratbility window after death
 const SHIP_BLINK_DUR = 0.1; // duration of ship blink animation when invulnernerable
 const LASER_MAX = 10; // Max number of lasers the canvas will render at once
-const LASER_SPD = 10; // Speed of laser in pixels per second
-
+const LASER_SPD = 150; // Speed of laser in pixels per second
+const LASER_WIDTH = 2; // Width of laser beam in pixels
+const LASER_LENGTH = 6; // Length of laser beam in pixels 
 
 const SHOW_CENTER_DOT = false; //Show ship center dot
 const SHOW_BOUNDING = false; //show or hide collision bounding
@@ -48,14 +49,13 @@ var ship = newShip();
 var roids = [];
 createAsteroidBelt();
 
-//ship design objects
+//Game polygons
 var shipPoly = [
     { x: SHIP_SIZE, y: 0},
     { x: -SHIP_SIZE, y: -( INDENT * SHIP_SIZE)},
-    { x: -( INDENT * SHIP_SIZE), y: 0,},
+    { x: -(INDENT * SHIP_SIZE), y: 0,},
     { x: -SHIP_SIZE, y: (INDENT * SHIP_SIZE)},
 ]
-
 
 var thrusterPoly = [
     {x: ((-SHIP_SIZE - (INDENT * SHIP_SIZE))/ 2 ), y: ( (INDENT * SHIP_SIZE) / 2)},
@@ -63,6 +63,12 @@ var thrusterPoly = [
     {x: ((-SHIP_SIZE - (INDENT * SHIP_SIZE))/ 2 ), y: -( (INDENT * SHIP_SIZE) / 2) }
 ]
 
+var laserPoly = [
+    {x: 0, y: LASER_WIDTH / 2 },
+    {x: LASER_LENGTH, y: LASER_WIDTH / 2 },
+    {x: LASER_LENGTH, y: -LASER_WIDTH / 2 },
+    {x: 0, y: -LASER_WIDTH / 2 },
+]
 
 //event handlers
 document.addEventListener('keydown', keyDown);
@@ -102,7 +108,7 @@ function keyDown(/** @type {KeyboardEvent} */ ev){
             ship.rot = radConv(TURN_SPEED) / FPS
             break;
         case keyCodes['shift']:
-            shootLaser();
+            createLaser();
             break;            
     }
 }
@@ -150,7 +156,7 @@ function newShip() {
     return {
     x: canv.width / 2,
     y: canv.height / 2,
-    a: radConv(270),
+    a: radConv(270), // 270 to spawn ship facing up
     rot: 0,
     explodeTime: 0,
     blinkTime: Math.ceil(SHIP_BLINK_DUR * FPS),
@@ -290,15 +296,30 @@ function drawRoid() { //draw asteroids based on coordinates in roids array
     }
 }
 
-function drawLaser() { //need to work out how to line up lasers with angle of ship
+function drawLaser() {
+    var x, y, i;
 
-    for (var i = 0; i < ship.lasers.length; i++) {
+    for (i = 0; i < ship.lasers.length; i++) {
+        var j = 0;
+
         ctx.fillStyle = "white";
         ctx.beginPath();
-        ctx.fillRect(ship.lasers[i].x, ship.lasers[i].y, 2, 8);
+
+        x = rotx(laserPoly[j].x, laserPoly[j].y, ship.lasers[i].a) + ship.lasers[i].x;
+        y = roty(laserPoly[j].x, laserPoly[j].y, ship.lasers[i].a) + ship.lasers[i].y;
+
+        ctx.moveTo(x, y);
+
+        for (j = 1; j < laserPoly.length; j++) {
+            x = rotx(laserPoly[j].x, laserPoly[j].y, ship.lasers[i].a) + ship.lasers[i].x;
+            y = roty(laserPoly[j].x, laserPoly[j].y, ship.lasers[i].a) + ship.lasers[i].y;
+
+            ctx.lineTo(x, y);
+        }
+
+        ctx.closePath();
         ctx.fill();
     }
-
 }
 
 function explodeShip() {
@@ -320,28 +341,11 @@ function explodeShip() {
     ctx.fill();
 }
 
-function shootLaser() { // creates laser object
+//basic gameplay functions
 
-    if (ship.canShoot && ship.lasers.length < LASER_MAX) {
-        ship.lasers.push({ //shoot from nose
-            x: rotx(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.x,
-            y: roty(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.y,
-            xvel: LASER_SPD * Math.cos(ship.a) / FPS,
-            yvel: LASER_SPD * Math.sin(ship.a) / FPS,
-        })
-
-    }
-
-    ship.canShoot = false;
-}
-
-function update(){
+function moveShip() {
     var blinkOn = ship.blinkNum % 2 == 0;
     var exploding = ship.explodeTime > 0;
-
-    //draw space
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, canv.width, canv.height);
 
     //if not exploding handle movement, movement animations and collision detection
     if (!exploding){
@@ -378,7 +382,7 @@ function update(){
         if(ship.thrusting){
             ship.thrust.x -= SHIP_THRUST * Math.cos(ship.a) / FPS;
             ship.thrust.y += SHIP_THRUST * Math.sin(ship.a) / FPS;
-    
+
         } else{
             ship.thrust.x -= FRICTION * ship.thrust.x / FPS;
             ship.thrust.y -= FRICTION * ship.thrust.y / FPS;
@@ -409,7 +413,7 @@ function update(){
     }
 
     //handle screen edge
-    
+
     if (ship.x < 0 - SHIP_SIZE) {
         ship.x = canv.width + SHIP_SIZE;
     } else if (ship.y < 0 - SHIP_SIZE) {
@@ -419,8 +423,9 @@ function update(){
     } else if (ship.y > canv.height + SHIP_SIZE) {
         ship.y = 0 - SHIP_SIZE;
     }
-    
-    //draw asteroids
+}
+
+function handleRoids() {
     drawRoid();
 
     // move asteroids and handle edges
@@ -438,7 +443,58 @@ function update(){
             roids[i].y = 0 - roids[i].r;
         }
     }
+}
 
-    //handle lasers
+
+function createLaser() { // creates laser objects
+
+    if (ship.canShoot && ship.lasers.length < LASER_MAX) {
+        ship.lasers.push({ //shoot from nose
+            x: rotx(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.x,
+            y: roty(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.y,
+            a: ship.a,
+            xvel: LASER_SPD * Math.cos(ship.a) / FPS,
+            yvel: LASER_SPD * Math.sin(ship.a) / FPS,
+        })
+    }
+    ship.canShoot = false;
+}
+
+function shootLaser() {
     drawLaser();
+
+    for (var i = 0; i < ship.lasers.length; i++) {
+        ship.lasers[i].x += ship.lasers[i].xvel;
+        ship.lasers[i].y += ship.lasers[i].yvel;
+
+        // Handle edge of screen
+
+        if (ship.lasers[i].x < 0) {
+            ship.lasers[i].x = canv.width;
+        } else if (ship.lasers[i].x > canv.width) {
+            ship.lasers[i].x = 0;
+        } else if (ship.lasers[i].y < 0) {
+            ship.lasers[i].y = canv.height;
+        } else if (ship.lasers[i].y > canv.height) {
+            ship.lasers[i].y = 0;
+        }
+    }
+}
+
+function update(){
+
+    // Draw game space
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canv.width, canv.height);
+
+    // Move ship and handle all associated collision detection
+    moveShip();
+
+    // Handle all asteroid functionality of asteroids created on init (asteroid creation logic will change in the future)  
+    handleRoids();
+
+    // Draw and move lasers created on keyDown
+    shootLaser();
+    
+
 } 
