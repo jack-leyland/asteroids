@@ -1,7 +1,7 @@
 /** @type {HTMLCanvasElement} */
 
-//var and const declarations
-const FPS = 60;
+//Game constants (some will be rewritten as variables once customizability webpage is built in the future)
+const FPS = 60; // Set framerate
 const SHIP_SIZE = 18; //distance from origin to nose of ship in pixels, bottom indent is calculated in relation to this
 const FRICTION = 0.7; //friction coefficiant of space where 0 = no friction, 1 = lots
 const TURN_SPEED = 360; //turn speed in degrees per second
@@ -15,8 +15,11 @@ const ROIDS_JAG = 0.4; // jaggedness of the asteriods (0 = none)
 const SHIP_EXPLODE_DUR = 0.3; // duration of ship explosition in seconds
 const SHIP_INV_DUR = 3; // duration of invulneratbility window after death
 const SHIP_BLINK_DUR = 0.1; // duration of ship blink animation when invulnernerable
+const LASER_MAX = 10; // Max number of lasers the canvas will render at once
+const LASER_SPD = 10; // Speed of laser in pixels per second
 
-const SHOW_CENTER_DOT = false; 
+
+const SHOW_CENTER_DOT = false; //Show ship center dot
 const SHOW_BOUNDING = false; //show or hide collision bounding
 
 
@@ -33,23 +36,6 @@ var keyCodes = {
     right: 39,
     space: 32,
     shift: 16,
-}
-
-//misc helper functions
-function radConv(deg){
-    return Math.PI * (deg / 180);
-}
-
-function rotx(x, y, angle){
-    return (x * Math.cos(angle)) - (y * Math.sin(angle));
-}
-
-function roty(x, y, angle){
-    return (x * Math.sin(angle)) + (y * Math.cos(angle));
-}
-
-function distBetweenPoints(x1, y1, x2, y2) {
-    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 }
 
 //draw game canvas
@@ -85,34 +71,60 @@ document.addEventListener('keyup', keyUp);
 //Game loop
 setInterval(update, 1000 / FPS); 
 
-//gameplay & graphic functions
+//misc helper functions
+function radConv(deg){
+    return Math.PI * (deg / 180);
+}
+
+function rotx(x, y, angle){
+    return (x * Math.cos(angle)) - (y * Math.sin(angle));
+}
+
+function roty(x, y, angle){
+    return (x * Math.sin(angle)) + (y * Math.cos(angle));
+}
+
+function distBetweenPoints(x1, y1, x2, y2) {
+    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+}
+
+//user interaction functions
+
 function keyDown(/** @type {KeyboardEvent} */ ev){
     switch(ev.keyCode){
-        case keyCodes['a']: // a key
+        case keyCodes['a']:
             ship.rot = radConv(-TURN_SPEED) / FPS
             break;
-        case keyCodes['w']: //w
+        case keyCodes['w']:
             ship.thrusting = true;
             break;
-        case keyCodes['d']: //d key
+        case keyCodes['d']:
             ship.rot = radConv(TURN_SPEED) / FPS
             break;
+        case keyCodes['shift']:
+            shootLaser();
+            break;            
     }
 }
 
 function keyUp(/** @type {KeyboardEvent} */ ev){
     switch(ev.keyCode){
-        case keyCodes['a']: // a key
+        case keyCodes['a']:
             ship.rot = 0;
             break;
-        case keyCodes['w']: //up arrow
+        case keyCodes['w']:
             ship.thrusting = false;
             break;
-        case keyCodes['d']: //d key
+        case keyCodes['d']:
             ship.rot = 0;
+            break;
+        case keyCodes['shift']:
+            ship.canShoot = true;
             break;
     }
 }
+
+//gameplay object and array creation functions 
 
 function newRoid(x, y) {
     var roid = {
@@ -126,7 +138,7 @@ function newRoid(x, y) {
         offs: [],
     };
 
-    //create vertex offset array
+    //create vertex offset array (controls jaggedness of asteroids)
     for (var i = 0; i < roid.vert; i++) {
         roid.offs.push(Math.random() * ROIDS_JAG * 2 + 1 - ROIDS_JAG);
     }
@@ -143,6 +155,8 @@ function newShip() {
     explodeTime: 0,
     blinkTime: Math.ceil(SHIP_BLINK_DUR * FPS),
     blinkNum: Math.ceil(SHIP_INV_DUR / SHIP_BLINK_DUR),
+    canShoot: true,
+    lasers: [],
     thrusting: false,
     thrust: {
         x: 0,
@@ -151,8 +165,8 @@ function newShip() {
     }
 }
 
-//inital asteroid spawn
-function createAsteroidBelt() {
+
+function createAsteroidBelt() { //inital asteroid spawn
     var x, y;
     roids = [];
 
@@ -165,6 +179,8 @@ function createAsteroidBelt() {
         roids.push(newRoid(x, y));
     }
 }
+
+//drawing/animation functions
 
 function drawShip(){
     var x, y;
@@ -229,7 +245,7 @@ function drawThruster() {
       ctx.stroke();
 }
 
-function drawRoid() {
+function drawRoid() { //draw asteroids based on coordinates in roids array
 
     var x, y, r, a, vert, offs; 
 
@@ -274,6 +290,17 @@ function drawRoid() {
     }
 }
 
+function drawLaser() { //need to work out how to line up lasers with angle of ship
+
+    for (var i = 0; i < ship.lasers.length; i++) {
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.fillRect(ship.lasers[i].x, ship.lasers[i].y, 2, 8);
+        ctx.fill();
+    }
+
+}
+
 function explodeShip() {
     ctx.fillStyle = 'darkred';
     ctx.beginPath();
@@ -291,6 +318,21 @@ function explodeShip() {
     ctx.beginPath();
     ctx.arc(ship.x, ship.y, SHIP_SIZE * 0.2, 0, Math.PI * 2, false);
     ctx.fill();
+}
+
+function shootLaser() { // creates laser object
+
+    if (ship.canShoot && ship.lasers.length < LASER_MAX) {
+        ship.lasers.push({ //shoot from nose
+            x: rotx(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.x,
+            y: roty(shipPoly[0].x, shipPoly[0].y, ship.a) + ship.y,
+            xvel: LASER_SPD * Math.cos(ship.a) / FPS,
+            yvel: LASER_SPD * Math.sin(ship.a) / FPS,
+        })
+
+    }
+
+    ship.canShoot = false;
 }
 
 function update(){
@@ -397,5 +439,6 @@ function update(){
         }
     }
 
-
+    //handle lasers
+    drawLaser();
 } 
