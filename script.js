@@ -12,7 +12,7 @@ const ROIDS_SIZE = 100; // max starting size in pixels
 const ROIDS_SPD = 50; // max starting speed in pixels per second
 const ROIDS_VERT = 10; // average number of vertices on each asteroid
 const ROIDS_JAG = 0.4; // jaggedness of the asteriods (0 = none)
-const SHIP_EXPLODE_DUR = .5; // duration of ship explosition in seconds
+const SHIP_EXPLODE_DUR = 0.5; // duration of ship explosition in seconds
 const SHIP_INV_DUR = 3; // duration of invulneratbility window after death
 const SHIP_BLINK_DUR = 0.1; // duration of ship blink animation when invulnernerable
 const LASER_MAX = 10; // Max number of lasers the canvas will render at once
@@ -20,9 +20,10 @@ const LASER_SPD = 500; // Speed of laser in pixels per second
 const LASER_WIDTH = 2; // Width of laser beam in pixels
 const LASER_LENGTH = 6; // Length of laser beam in pixels
 const LASER_DIST = 0.3; // Maximum laser travel distance as fraction of canvas width 
-const LASER_EXPLODE_DUR = 0.4; //duration of laser collision animation in seconds
-const LASER_EXPLODE_DOTS = 10; // number of dots animated in the laser explosion
-const LASER_DOTS_SPD = 200; // speed of explosion dot dissemination
+const LASER_EXPLODE_DUR = 0.35; //duration of laser collision animation in seconds
+const EXPLODE_DOTS = 10; // number of dots animated in the explosions
+const LASER_DOTS_SPD = 200; // speed of laser explosion dot dissemination
+const SHIP_DOTS_SPD = 100; // speed of ship explosion dot dissemination
 
 //Dev settings
 const SHOW_CENTER_DOT = false; //Show ship center dot
@@ -179,7 +180,7 @@ function newShip() {
 function newLaserExplosion(x , y) {
     var dots = [];
 
-    for (var i = 0; i < LASER_EXPLODE_DOTS; i++) {
+    for (var i = 0; i < EXPLODE_DOTS; i++) {
         dots.push({
             x: x, 
             y: y,
@@ -193,6 +194,23 @@ function newLaserExplosion(x , y) {
     return dots;
 }
 
+function newShipExplosion(x , y) { //this is probably not the most efficient way to do this but cut me some slack I'm a beginner
+    var dots = [];
+
+    for (var i = 0; i < EXPLODE_DOTS; i++) {
+        dots.push({
+            ship: true, // flag that the explosion is a ship explosion so handleShip only pushes one explosion object throughout explodeTime 
+            x: x,       // I really did not want to rewrite handleShip to avoid having to use this flag lol
+            y: y,
+            r: 3, // hardcoded dot size
+            xvel: Math.random() * SHIP_DOTS_SPD / FPS * (Math.random() < 0.5 ? 1 : -1),
+            yvel: Math.random() * SHIP_DOTS_SPD / FPS * (Math.random() < 0.5 ? 1 : -1),
+            a: Math.random() * Math.PI * 2,
+            explodeTime: Math.ceil(SHIP_EXPLODE_DUR * FPS),
+        });
+    }
+    return dots;
+}
 
 function createAsteroidBelt() { //inital asteroid spawn
     var x, y;
@@ -344,25 +362,6 @@ function drawLaser() {
     }
 }
 
-function drawShipExplosion() {
-    ctx.fillStyle = 'darkred';
-    ctx.beginPath();
-    ctx.arc(ship.x, ship.y, SHIP_SIZE * 1.7, 0, Math.PI * 2, false);
-    ctx.fill();
-    ctx.fillStyle = 'red';
-    ctx.beginPath();
-    ctx.arc(ship.x, ship.y, SHIP_SIZE * 1.4, 0, Math.PI * 2, false);
-    ctx.fill();
-    ctx.fillStyle = 'orange';
-    ctx.beginPath();
-    ctx.arc(ship.x, ship.y, SHIP_SIZE * 0.8, 0, Math.PI * 2, false);
-    ctx.fill();
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(ship.x, ship.y, SHIP_SIZE * 0.2, 0, Math.PI * 2, false);
-    ctx.fill();
-}
-
 //basic gameplay functions
 
 function moveShip() {
@@ -418,18 +417,30 @@ function moveShip() {
 
         ship.a += ship.rot;
         
+    } else if (explosions.length > 0) {
+
+        for (var i = 0; i < explosions.length; i++) {
+            if (explosions[i][0]) {
+
+                ship.explodeTime--; 
+                        
+                if(ship.explodeTime == 0){
+                    ship = newShip();
+                    }
+                break;
+            } else {
+                ship.canShoot = false;
+                explosions.push(newShipExplosion(ship.x, ship.y));
+                break;
+            }
+        }
+    
     } else { 
         
         ship.canShoot = false;
+        
+        explosions.push(newShipExplosion(ship.x, ship.y));
 
-        drawShipExplosion();
-        
-        //explosion obeys ships momentum and friction
-        ship.thrust.x -= FRICTION * ship.thrust.x / FPS;
-        ship.thrust.y -= FRICTION * ship.thrust.y / FPS;
-        ship.x -= ship.thrust.x;
-        ship.y += ship.thrust.y;
-        
         //explosion time countdown
         ship.explodeTime--; 
         
@@ -541,10 +552,9 @@ function handleLaser() {
     }
 }
 
-function handleLaserexplosions() {
+function handleExplosions() {
 
     for (var i = 0; i < explosions.length; i++) {
-       if (explosions)
         for (var j = 0; j < explosions[i].length; j++) {
             if(explosions[i][j].explodeTime > 0) {
             
@@ -601,9 +611,8 @@ function update(){
     // Draw and move lasers created on keyDown. Pushes laser explosion arrays on contact with asteroid. 
     handleLaser();
 
-    //Draw and move laser explosions
-    handleLaserexplosions();
+    //Draw and move explosions
+    handleExplosions();
 
-    
 
 } 
